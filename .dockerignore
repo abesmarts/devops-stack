@@ -1,0 +1,40 @@
+# Git data
+.git
+.gitignore
+
+# macOS junk
+.DS_Store
+
+# IDE/editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Python bytecode and venvs
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+.env
+venv/
+*.venv/
+.pytest_cache/
+
+# Ansible retry files
+*.retry
+
+# Terraform / OpenTofu state
+infra/tofu/.terraform/
+infra/tofu/.terraform.lock.hcl
+infra/tofu/terraform.tfstate
+infra/tofu/terraform.tfstate.*
+infra/tofu/crash.log
+
+# Logs
+logs/
+elk-docker/filebeat/*.log
+
+# Host-only files not needed inside images
+ansible/inventory.ini

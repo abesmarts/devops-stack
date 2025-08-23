@@ -1,0 +1,37 @@
+---
+- name: Create a Python venv and install scraping packages
+  hosts: targets
+  become: true
+  vars:
+    venv_dir: "/home/ubuntu/pyenv-scrape"
+    py_pkgs:
+      - pip
+      - wheel
+      - setuptools
+      - requests
+      - beautifulsoup4
+      - lxml
+      - pandas
+      - selenium
+      - undetected-chromedriver
+      - psutil
+  tasks:
+    - name: Ensure system Python + venv prereqs
+      apt:
+        name: [python3, python3-venv, python3-pip]
+        state: present
+        update_cache: true
+
+    - name: Create venv
+      command: "python3 -m venv {{ venv_dir }}"
+      args: { creates: "{{ venv_dir }}/bin/activate" }
+
+    - name: Upgrade pip
+      command: "{{ venv_dir }}/bin/python -m pip install --upgrade pip"
+
+    - name: Install packages
+      command: "{{ venv_dir }}/bin/pip install {{ item }}"
+      loop: "{{ py_pkgs }}"
+
+    - name: Ownership
+      file: { path: "{{ venv_dir }}", state: directory, owner: ubuntu, group: ubuntu, recurse: true }

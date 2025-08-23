@@ -1,0 +1,53 @@
+---
+- name: Update Ubuntu and install Chrome + matching ChromeDriver on Desktop
+  hosts: targets
+  become: true
+  vars:
+    desktop_dir: "/home/ubuntu/Desktop"
+  tasks:
+    - name: Ensure Desktop exists
+      file: { path: "{{ desktop_dir }}", state: directory, owner: ubuntu, group: ubuntu, mode: "0755" }
+
+    - name: Update/upgrade packages
+      apt: { update_cache: true, upgrade: dist }
+
+    - name: Install prerequisites
+      apt: { name: [wget, unzip, ca-certificates], state: present }
+
+    - name: Download Google Chrome .deb
+      get_url:
+        url: https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+        dest: /tmp/google-chrome-stable.deb
+        mode: "0644"
+
+    - name: Install Google Chrome
+      apt: { deb: /tmp/google-chrome-stable.deb }
+
+    - name: Get Chrome major version
+      shell: "google-chrome --version | awk '{print $3}' | cut -d'.' -f1"
+      register: chrome_major
+      changed_when: false
+
+    - name: Query latest matching ChromeDriver
+      shell: |
+        set -e
+        MAJOR="{{ chrome_major.stdout | trim }}"
+        curl -sS https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${MAJOR}
+      register: chromedriver_ver
+      changed_when: false
+
+    - name: Download ChromeDriver zip
+      get_url:
+        url: "https://chromedriver.storage.googleapis.com/{{ chromedriver_ver.stdout }}/chromedriver_linux64.zip"
+        dest: /tmp/chromedriver_linux64.zip
+        mode: "0644"
+
+    - name: Unzip ChromeDriver onto Desktop
+      unarchive:
+        src: /tmp/chromedriver_linux64.zip
+        dest: "{{ desktop_dir }}"
+        remote_src: true
+        mode: "0755"
+
+    - name: Fix ownership/permissions
+      file: { path: "{{ desktop_dir }}/chromedriver", owner: ubuntu, group: ubuntu, mode: "0755" }

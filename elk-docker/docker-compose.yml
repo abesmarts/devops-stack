@@ -1,0 +1,102 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.0.5
+    container_name: es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false          # dev-only simplicity
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g            # tune in Troubleshooting if needed
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "</dev/tcp/127.0.0.1/9200"]
+      interval: 20s
+      timeout: 5s
+      retries: 15
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:9.0.5
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    ports:
+      - "5601:5601"
+
+  # MySQL (LTS) for Semaphore
+  mysql:
+    image: mysql:8.4
+    container_name: mysql
+    environment:
+      - MYSQL_DATABASE=semaphore
+      - MYSQL_USER=semaphore
+      - MYSQL_PASSWORD=semaphorepass
+      - MYSQL_ROOT_PASSWORD=rootpass
+    volumes:
+      - mysqldata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Semaphore UI (MySQL-backed) — with persistent config + data
+  semaphore:
+    image: semaphoreui/semaphore:v2.16.16
+    container_name: semaphore
+    ports:
+      - "3000:3000"
+    environment:
+      # Admin bootstrap
+      - SEMAPHORE_ADMIN=admin
+      - SEMAPHORE_ADMIN_PASSWORD=changeme
+      - SEMAPHORE_ADMIN_NAME=Admin
+      - SEMAPHORE_ADMIN_EMAIL=admin@localhost
+      # MySQL connection
+      - SEMAPHORE_DB=semaphore
+      - SEMAPHORE_DB_USER=semaphore
+      - SEMAPHORE_DB_PASS=semaphorepass
+      - SEMAPHORE_DB_HOST=mysql
+      - SEMAPHORE_DB_PORT=3306
+      - SEMAPHORE_DB_DIALECT=mysql
+      - TZ=UTC
+    labels:
+      # Filebeat label → route container logs to 'semaphore_logs'
+      co.elastic.logs/index: "semaphore_logs"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - semaphore-config:/etc/semaphore
+      - semaphore-data:/var/lib/semaphore
+
+  # Filebeat tails:
+  #   - Docker container logs (needs both mounts below)
+  #   - Local JSON directories (mounted readonly)
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:9.0.5
+    container_name: filebeat
+    user: root
+    command: ["--strict.perms=false", "-e"]
+    depends_on:
+      - elasticsearch
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../logs/ansible:/usr/share/filebeat/host-logs/ansible:ro
+      - ../logs/vm_state:/usr/share/filebeat/host-logs/vm_state:ro
+      - ../logs/bot_logger:/usr/share/filebeat/host-logs/bot_logger:ro
+
+volumes:
+  esdata:
+  mysqldata:
+  semaphore-config:
+  semaphore-data:

@@ -1,0 +1,97 @@
+# Routes:
+#  - Docker container logs → force ANY Semaphore logs into 'semaphore_logs'
+#  - Local JSON files:
+#       logs/ansible/*.json   → ansible_logd
+#       logs/vm_state/*.json  → vm_state
+#       logs/bot_logger/*.json→ bot_logger
+
+filebeat.inputs:
+  - type: filestream
+    id: ansible-json
+    enabled: true
+    paths:
+      - /usr/share/filebeat/host-logs/ansible/*.json
+    parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
+          overwrite_keys: true
+    index: "ansible_logd"
+    processors:
+      - add_fields:
+          target: ""
+          fields:
+            event.dataset: "ansible"
+
+  - type: filestream
+    id: vm-state-json
+    enabled: true
+    paths:
+      - /usr/share/filebeat/host-logs/vm_state/*.json
+    parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
+          overwrite_keys: true
+    index: "vm_state"
+    processors:
+      - add_fields:
+          target: ""
+          fields:
+            event.dataset: "vm_state"
+
+  - type: filestream
+    id: bot-logger-json
+    enabled: true
+    paths:
+      - /usr/share/filebeat/host-logs/bot_logger/*.json
+    parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
+          overwrite_keys: true
+    index: "bot_logger"
+    processors:
+      - add_fields:
+          target: ""
+          fields:
+            event.dataset: "bot_logger"
+
+  # All Docker containers
+  - type: container
+    enabled: true
+    stream: all
+    paths:
+      - /var/lib/docker/containers/*/*.log
+    processors:
+      - add_docker_metadata: ~
+
+processors:
+  - add_host_metadata: ~
+  - add_process_metadata:
+      match_pids: ["process.pid", "process.ppid"]
+      ignore_missing: true
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+
+  # Default daily index for anything not captured by specific rules below
+  index: "filebeat-%{[agent.version]}-%{+yyyy.MM.dd}"
+
+  # FORCE all Semaphore logs into 'semaphore_logs' even if labels are missing:
+  # - If the known label is present (recommended) → match on label
+  # - Else if container name contains 'semaphore' → match on name
+  # - Else if image name looks like '*/*semaphore[:tag]' → match on image
+  indices:
+    - index: "semaphore_logs"
+      when:
+        or:
+          - contains:
+              "[container][labels][co.elastic.logs/index]": "semaphore_logs"
+          - regexp:
+              "[container][name]": ".*semaphore.*"
+          - regexp:
+              "[container][image][name]": ".*/semaphore(:.*)?$"
+
+setup.template.enabled: false
+logging.metrics.enabled: false

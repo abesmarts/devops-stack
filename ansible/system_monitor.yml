@@ -1,0 +1,19 @@
+---
+- name: Deploy & schedule simple system monitor -> vm_state JSON
+  hosts: targets
+  become: true
+  vars:
+    script_src: "files/system_monitor.py"
+    script_dest: "/usr/local/bin/system_monitor.py"
+  tasks:
+    - name: Copy monitor script
+      copy: { src: "{{ script_src }}", dest: "{{ script_dest }}", mode: "0755", owner: root, group: root }
+
+    - name: Ensure vm_state directory exists
+      file: { path: "/var/log/vm_state", state: directory, owner: root, group: root, mode: "0755" }
+
+    - name: Cron every 2 minutes
+      cron: { name: "system_monitor_json_emit", user: root, minute: "*/2", job: "/usr/bin/env python3 {{ script_dest }}" }
+
+    - name: Run once now
+      command: "/usr/bin/env python3 {{ script_dest }}"
