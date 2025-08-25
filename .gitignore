@@ -28,6 +28,8 @@ infra/tofu/.terraform.lock.hcl
 infra/tofu/terraform.tfstate
 infra/tofu/terraform.tfstate.*
 infra/tofu/crash.log
+infra/tofu/outputs.tf
+infra/tofu/variable.tf
 
 # Logs
 logs/
@@ -35,8 +37,8 @@ elk-docker/filebeat/*.log
 
 # Local overrides
 terraform.tfvars
-outputs.tf
-variable.tf
+
+
 # ansible/inventory.ini
 .env
 
