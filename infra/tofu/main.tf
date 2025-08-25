@@ -17,9 +17,7 @@ variable "name" {
   default = "semproj"
 }
 
-variable "gcp_project" {
-  type = string
-}
+
 
 variable "gcp_region" {
   type    = string
@@ -54,7 +52,7 @@ variable "ssh_source_ranges" {
 # Provider
 # ------------------------
 provider "google" {
-  project = var.gcp_project
+  project = $gcp_project
   region  = var.gcp_region
   zone    = var.gcp_zone
 }
