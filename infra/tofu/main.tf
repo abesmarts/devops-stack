@@ -1,5 +1,6 @@
 terraform {
   required_version = ">= 1.6.0"
+
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -8,12 +9,64 @@ terraform {
   }
 }
 
+# ------------------------
+# Variables
+# ------------------------
+variable "name" {
+  type    = string
+  default = "semproj"
+}
+
+variable "gcp_project" {
+  type = string
+}
+
+variable "gcp_region" {
+  type    = string
+  default = "us-central1"
+}
+
+variable "gcp_zone" {
+  type    = string
+  default = "us-central1-c"
+}
+
+variable "machine_type" {
+  type    = string
+  default = "e2-medium"
+}
+
+variable "ubuntu_image" {
+  type    = string
+  default = "ubuntu-os-cloud/ubuntu-2404-lts"
+}
+
+variable "ssh_public_key" {
+  type = string
+}
+
+variable "ssh_source_ranges" {
+  type    = list(string)
+  default = ["0.0.0.0/0"]
+}
+
+variable "elasticsearch_host" {
+  description = "Elasticsearch URL reachable by the VM (e.g., http://localhost:9200)"
+  type        = string
+}
+
+# ------------------------
+# Provider
+# ------------------------
 provider "google" {
   project = var.gcp_project
   region  = var.gcp_region
   zone    = var.gcp_zone
 }
 
+# ------------------------
+# Networking
+# ------------------------
 resource "google_compute_network" "vpc" {
   name                    = "${var.name}-vpc"
   auto_create_subnetworks = true
@@ -21,11 +74,19 @@ resource "google_compute_network" "vpc" {
 
 resource "google_compute_firewall" "ssh_allow" {
   name    = "${var.name}-allow-ssh"
-  network = google_compute_network.vpc.name
-  allow { protocol = "tcp" ports = ["22"] }
+  network = google_compute_network.vpc.id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
   source_ranges = var.ssh_source_ranges
 }
 
+# ------------------------
+# VM Instance
+# ------------------------
 resource "google_compute_instance" "vm" {
   name         = "${var.name}-vm"
   machine_type = var.machine_type
@@ -33,7 +94,7 @@ resource "google_compute_instance" "vm" {
 
   boot_disk {
     initialize_params {
-      image = var.ubuntu_image         # ubuntu-os-cloud/ubuntu-2404-lts
+      image = var.ubuntu_image         # e.g. "ubuntu-os-cloud/ubuntu-2404-lts"
       size  = 20
       type  = "pd-balanced"
     }
@@ -49,10 +110,13 @@ resource "google_compute_instance" "vm" {
     startup-script = <<-EOT
       #!/usr/bin/env bash
       set -euo pipefail
+
+      # Create log dirs
       sudo mkdir -p /var/log/vm_state /var/log/bot_logger
       sudo chown -R root:root /var/log/vm_state /var/log/bot_logger
       sudo chmod 755 /var/log/vm_state /var/log/bot_logger
 
+      # Install dependencies
       sudo apt-get update -y
       sudo apt-get install -y curl gnupg apt-transport-https
 
@@ -64,25 +128,36 @@ resource "google_compute_instance" "vm" {
       sudo apt-get update -y
       sudo apt-get install -y filebeat
 
-      sudo bash -c 'cat > /etc/filebeat/filebeat.yml' <<FBYML
+      # Write Filebeat config
+      sudo bash -c 'cat > /etc/filebeat/filebeat.yml' <<'FBYML'
 filebeat.inputs:
   - type: filestream
     id: vm-state-json
     enabled: true
     paths: ["/var/log/vm_state/*.json"]
-    parsers: [{ndjson: {target: "", add_error_key: true, overwrite_keys: true}}]
+    parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
+          overwrite_keys: true
     index: "vm_state"
 
   - type: filestream
     id: bot-logger-json
     enabled: true
     paths: ["/var/log/bot_logger/*.json"]
-    parsers: [{ndjson: {target: "", add_error_key: true, overwrite_keys: true}}]
+    parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
+          overwrite_keys: true
     index: "bot_logger"
 
 processors:
   - add_host_metadata: ~
-  - add_process_metadata: {match_pids: ["process.pid","process.ppid"], ignore_missing: true}
+  - add_process_metadata:
+      match_pids: ["process.pid","process.ppid"]
+      ignore_missing: true
 
 output.elasticsearch:
   hosts: ["${var.elasticsearch_host}"]
@@ -102,9 +177,14 @@ FBYML
     scopes = ["https://www.googleapis.com/auth/cloud-platform"]
   }
 
-  labels = { role = "semaphore-target" }
+  labels = {
+    role = "semaphore-target"
+  }
 }
 
+# ------------------------
+# Ansible Inventory Update
+# ------------------------
 resource "null_resource" "update_inventory" {
   triggers = {
     vm_ip = google_compute_instance.vm.network_interface[0].access_config[0].nat_ip
@@ -112,9 +192,26 @@ resource "null_resource" "update_inventory" {
 
   provisioner "local-exec" {
     command = <<EOT
-      echo -e "[targets]\nvm ansible_host=${self.triggers.vm_ip} ansible_user=ubuntu\n\n\[all:vars]\nansible_python_interpreter=/usr/bin/python3" > ../ansible/inventory.ini
+      echo -e "[targets]\nvm ansible_host=${self.triggers.vm_ip} ansible_user=ubuntu\n\n[all:vars]\nansible_python_interpreter=/usr/bin/python3" > ../ansible/inventory.ini
       echo "ansible/inventory.ini updated with IP ${self.triggers.vm_ip}"
     EOT
-
   }
+}
+
+# ------------------------
+# Outputs
+# ------------------------
+output "vm_external_ip" {
+  description = "External IP of the VM"
+  value       = google_compute_instance.vm.network_interface[0].access_config[0].nat_ip
+}
+
+output "vm_name" {
+  description = "VM instance name"
+  value       = google_compute_instance.vm.name
+}
+
+output "network_name" {
+  description = "VPC network name"
+  value       = google_compute_network.vpc.name
 }
