@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd .
+cd infra/tofu/
 
 echo "🔹 Initializing tofu/terraform..."
 tofu init
