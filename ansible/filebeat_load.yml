@@ -1,0 +1,94 @@
+---
+- name: Install and configure Filebeat
+  hosts: targets
+  become: true
+  vars:
+    elasticsearch_host: "http://YOUR_ELASTICSEARCH_HOST:9200"  # replace with your host
+  tasks:
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install dependencies
+      apt:
+        name:
+          - curl
+          - gnupg
+          - apt-transport-https
+        state: present
+
+    - name: Add Elastic GPG key
+      ansible.builtin.apt_key:
+        url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+        state: present
+
+    - name: Add Elastic repository
+      ansible.builtin.apt_repository:
+        repo: "deb https://artifacts.elastic.co/packages/9.x/apt stable main"
+        state: present
+        filename: "elastic-9.x"
+
+    - name: Install Filebeat
+      apt:
+        name: filebeat
+        state: present
+        update_cache: yes
+
+    - name: Create log directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - /var/log/vm_state
+        - /var/log/bot_logger
+
+    - name: Configure Filebeat
+      copy:
+        dest: /etc/filebeat/filebeat.yml
+        content: |
+          filebeat.inputs:
+            - type: filestream
+              id: vm-state-json
+              enabled: true
+              paths: ["/var/log/vm_state/*.json"]
+              parsers:
+                - ndjson:
+                    target: ""
+                    add_error_key: true
+                    overwrite_keys: true
+              index: "vm_state"
+
+            - type: filestream
+              id: bot-logger-json
+              enabled: true
+              paths: ["/var/log/bot_logger/*.json"]
+              parsers:
+                - ndjson:
+                    target: ""
+                    add_error_key: true
+                    overwrite_keys: true
+              index: "bot_logger"
+
+          processors:
+            - add_host_metadata: ~
+            - add_process_metadata:
+                match_pids: ["process.pid","process.ppid"]
+                ignore_missing: true
+
+          output.elasticsearch:
+            hosts: ["{{ elasticsearch_host }}"]
+            protocol: "http"
+            index: "filebeat-%{[agent.version]}-%{+yyyy.MM.dd}"
+
+          setup.template.enabled: false
+          logging.metrics.enabled: false
+
+    - name: Enable and start Filebeat
+      systemd:
+        name: filebeat
+        enabled: yes
+        state: restarted

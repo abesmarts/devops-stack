@@ -110,61 +110,6 @@ resource "google_compute_instance" "vm" {
       sudo mkdir -p /var/log/vm_state /var/log/bot_logger
       sudo chown -R root:root /var/log/vm_state /var/log/bot_logger
       sudo chmod 755 /var/log/vm_state /var/log/bot_logger
-
-      # Install dependencies
-      sudo apt-get update -y
-      sudo apt-get install -y curl gnupg apt-transport-https
-
-      # Install Filebeat 9.x
-      curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch \
-        | sudo gpg --dearmor -o /usr/share/keyrings/elastic-archive-keyring.gpg
-      echo "deb [signed-by=/usr/share/keyrings/elastic-archive-keyring.gpg] https://artifacts.elastic.co/packages/9.x/apt stable main" \
-        | sudo tee /etc/apt/sources.list.d/elastic-9.x.list
-      sudo apt-get update -y
-      sudo apt-get install -y filebeat
-
-      # Write Filebeat config (fully literal, no Terraform interpolation)
-      sudo bash -c 'cat > /etc/filebeat/filebeat.yml' <<'FBYML'
-filebeat.inputs:
-  - type: filestream
-    id: vm-state-json
-    enabled: true
-    paths: ["/var/log/vm_state/*.json"]
-    parsers:
-      - ndjson:
-          target: ""
-          add_error_key: true
-          overwrite_keys: true
-    index: "vm_state"
-
-  - type: filestream
-    id: bot-logger-json
-    enabled: true
-    paths: ["/var/log/bot_logger/*.json"]
-    parsers:
-      - ndjson:
-          target: ""
-          add_error_key: true
-          overwrite_keys: true
-    index: "bot_logger"
-
-processors:
-  - add_host_metadata: ~
-  - add_process_metadata:
-      match_pids: ["process.pid","process.ppid"]
-      ignore_missing: true
-
-output.elasticsearch:
-  hosts: ["http://YOUR_ELASTICSEARCH_HOST:9200"]  # <- hardcode your Elasticsearch URL here
-  protocol: "http"
-  index: "filebeat-%{[agent.version]}-%{+yyyy.MM.dd}"
-
-setup.template.enabled: false
-logging.metrics.enabled: false
-FBYML
-
-      sudo systemctl enable filebeat
-      sudo systemctl restart filebeat
     EOT
   }
 
