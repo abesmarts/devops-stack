@@ -94,7 +94,7 @@ resource "google_compute_instance" "vm" {
 
   boot_disk {
     initialize_params {
-      image = var.ubuntu_image         # e.g. "ubuntu-os-cloud/ubuntu-2404-lts"
+      image = var.ubuntu_image
       size  = 20
       type  = "pd-balanced"
     }
@@ -128,7 +128,7 @@ resource "google_compute_instance" "vm" {
       sudo apt-get update -y
       sudo apt-get install -y filebeat
 
-      # Write Filebeat config
+      # Write Filebeat config (quoted heredoc so %{ } isn’t parsed by Terraform)
       sudo bash -c 'cat > /etc/filebeat/filebeat.yml' <<'FBYML'
 filebeat.inputs:
   - type: filestream
