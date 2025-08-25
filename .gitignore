@@ -35,5 +35,5 @@ elk-docker/filebeat/*.log
 
 # Local overrides
 terraform.tfvars
-ansible/inventory.ini
+# ansible/inventory.ini
 .env
