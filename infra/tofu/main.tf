@@ -50,11 +50,6 @@ variable "ssh_source_ranges" {
   default = ["0.0.0.0/0"]
 }
 
-variable "elasticsearch_host" {
-  description = "Elasticsearch URL reachable by the VM (e.g., http://localhost:9200)"
-  type        = string
-}
-
 # ------------------------
 # Provider
 # ------------------------
@@ -128,7 +123,7 @@ resource "google_compute_instance" "vm" {
       sudo apt-get update -y
       sudo apt-get install -y filebeat
 
-      # Write Filebeat config (quoted heredoc so %{ } isn’t parsed by Terraform)
+      # Write Filebeat config (fully literal, no Terraform interpolation)
       sudo bash -c 'cat > /etc/filebeat/filebeat.yml' <<'FBYML'
 filebeat.inputs:
   - type: filestream
@@ -160,7 +155,7 @@ processors:
       ignore_missing: true
 
 output.elasticsearch:
-  hosts: ["${var.elasticsearch_host}"]
+  hosts: ["http://YOUR_ELASTICSEARCH_HOST:9200"]  # <- hardcode your Elasticsearch URL here
   protocol: "http"
   index: "filebeat-%{[agent.version]}-%{+yyyy.MM.dd}"
 
